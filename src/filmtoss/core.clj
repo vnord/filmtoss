@@ -12,14 +12,12 @@
 (defn get-id-from-attr [x]
   (re-find #"\d+" (:href (:attrs x))))
 
-(defn imdb-titles [title]
+(defn imdb-ids [title]
   (let
     [stuff (html/select 
              (fetch-url (imdb-search-url title)) [:h3.lister-item-header :a])]
     (map
-      (fn [x] {:id (get-id-from-attr x)
-               :title (html/text x)})
-    stuff)))
+      (fn [x] (get-id-from-attr x)) stuff)))
 
 (defn select-people [page loc]
   (let
@@ -35,11 +33,30 @@
   (apply hash-map (apply concat (map get-roles (remove nil?
     (map #(select-people page %) [2 3 4]))))))
 
+(defn get-rating [page]
+  (first (clojure.string/split (clojure.string/trim (first
+    (map html/text (html/select page [:div.imdbRating])))) #"/")))
+
+(defn get-year [page]
+  (first (:content (first
+    (html/select page [:div.title_wrapper :h1 :span :a])))))
+
+(defn get-title [page]
+  (clojure.string/replace (first (:content (first
+    (html/select page [:div.titleBar :div.title_wrapper :h1])))) #" " ""))
+    ; that last bit is not a regular space lol
+
+(defn get-original-title [page]
+  (first (:content (first (html/select page [:div.originalTitle])))))
+
 (defn get-info [title]
-  (let [hit  (first (imdb-titles title))
-        id   (:id hit)
-        page (fetch-url (str "https://www.imdb.com/title/tt" id))
-        ppl  (get-people page)
-        desc [:desc (clojure.string/trim (first (map html/text
-               (html/select page [:div.summary_text]))))]]
-    (into {} [hit ppl desc])))
+  (let [id              (first (imdb-ids title))
+        page            (fetch-url (str "https://www.imdb.com/title/tt" id))
+        title           [:title (get-title page)]
+        original-title  [:original-title (get-original-title page)]
+        ppl             (get-people page)
+        desc            [:desc (clojure.string/trim (first (map html/text
+                               (html/select page [:div.summary_text]))))]
+        rating [:rating (get-rating page)]
+        year   [:year (get-year page)]]
+    (into {} [[:id id] title original-title year rating ppl desc])))
